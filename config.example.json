@@ -1,0 +1,7 @@
+{
+  "source": "claude",
+  "lark_cli": "/opt/homebrew/bin/lark-cli",
+  "system_status_id": "<setup.py 会填>",
+  "user_open_id": "<setup.py 会填>",
+  "utc_offset_hours": 8
+}

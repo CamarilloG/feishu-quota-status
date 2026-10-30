@@ -1,0 +1,11 @@
+# 个人配置与运行时文件
+config.json
+status.json
+last_title.txt
+claude_rate_limits.json
+*.tmp
+*.log
+*.debug.log
+__pycache__/
+menubar/build/
+.DS_Store
