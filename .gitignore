@@ -9,3 +9,10 @@ claude_rate_limits.json
 __pycache__/
 menubar/build/
 .DS_Store
+
+# lark_status 的运行时状态
+state/
+.pytest_cache/
+*.egg-info/
+build/
+dist/

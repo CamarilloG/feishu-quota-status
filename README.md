@@ -1,23 +1,127 @@
 # feishu-quota-status 😵‍💫
 
-> **飞书状态栏订阅额度** · Your Claude / Codex quota, live in your Feishu status.
->
-> 额度见底，人已瘫坐。至少让同事知道，你不是在摸鱼，是 AI 先躺了。
+> **把 AI 额度、摸鱼时长、CI 状态塞进你的飞书状态栏。**
+
+**额度见底，人已瘫坐。至少让同事知道，你不是在摸鱼，是 AI 先躺了。**
+
+<!--
+  首屏图位（占位，请替换）：
+  建议截一张飞书聊天窗口的图，你的头像旁边挂着「🏖️ 已陨落 15:49恢复」，
+  下面同事回一句「你怎么了？」。
+  这种图比任何功能列表都有效——它是个梗，不是广告。
+  图放这里：
+  <img src="docs/status-demo.png" width="640" alt="飞书状态栏显示 AI 额度已用尽">
+-->
 
 ```
-⚡ Claude剩53% 15:49恢复      ← 还能打
-⌨️ Claude剩9% 15:49恢复       ← 省着点用，手打代码中
-🏖️ 已陨落 15:49恢复           ← 别找我，我和 AI 一起倒下了
+🏖️ 已陨落 15:49恢复        ← 别找我，我和 AI 一起倒下了
+⚡ Claude剩53% 15:49恢复     ← 还能打
+⌨️ Claude剩9% 15:49恢复      ← 省着点用，手打代码中
+
+🐟 已摸鱼 47 分钟            ← 离开工位多久了
+🍅 专注中 剩 12 分钟          ← 现在不方便被打断
+❌ CI 构建挂了               ← 别以为我在忙，是流水线挂了
 ```
 
-每 10 分钟把 Claude（或 Codex）订阅的剩余额度写进你的**飞书个人状态**，同事点开你头像就知道：
-你现在是满血 10x 工程师，还是额度清零、瘫在工位上等 5 小时窗口重置的普通人。
+飞书状态栏有几个反直觉的坑：**改文字必须"改名 → 关闭 → 重开"三步**、**名称上限 20 字符且汉字算 2**、**图标只有 18 个 emoji 一个用不了**。这个项目把它们封进一个 `core`，然后给你几个开箱即用的场景。
 
-顺手送一个 macOS **菜单栏小玩意儿**，两边额度一眼看全，一键切换飞书显示谁。
+装完立刻能看到东西，不写代码。想加自己的场景，去看 `lark_status/sources/fish.py`——那 36 行就是全部文档。
+
+> 原本的额度功能**完全不受影响**：`update.py` 和 macOS 菜单栏照旧工作。新东西全是加法。
+> 现在也**不再只支持 macOS**：凭证读取按平台分支，Linux / Windows 都能跑。
 
 ---
 
-## 它在干嘛
+## 快速开始
+
+```bash
+pip install -e .
+lark-status setup        # 复用你已有的 system_status_id，不会重复创建
+lark-status now          # 看看现在会显示什么
+lark-status tick         # 真跑一轮
+```
+
+已经装过旧版的，`setup` 会检测到现有配置并跳过创建，不会影响你正在用的状态。
+
+## 内置场景
+
+顺序即优先级，写在 `config.json` 的 `sources` 里。某个场景没内容就自动让给下一个，全都没内容就关掉状态：
+
+```json
+"sources": ["pomodoro", "fish", "quota", "ci"]
+```
+
+### ⚡ quota — AI 订阅额度
+
+原功能，见下面「它在干嘛」。
+
+### 🍅 pomodoro — 番茄钟
+
+```bash
+lark-status pomodoro start      # 25 分钟
+lark-status pomodoro start 50   # 50 分钟
+lark-status pomodoro stop
+```
+
+倒计时归零显示「专注结束」，不会自动消失——得你自己 stop，同事才知道你空出来了。
+
+### 🐟 fish — 摸鱼计时器
+
+```bash
+lark-status fish start     # 起身走人
+lark-status fish stop      # 回来了，顺手清零
+```
+
+跨天也算得对。超过 2 小时图标从 `Coffee` 换成 `StatusEnjoyLife`（更张扬）。
+
+### ❌ ci — 构建状态
+
+```json
+"ci": { "repo": "you/repo", "branch": "main" }
+```
+
+**只有不绿的时候才占位置**——成功了返回 `None`，不会因为"CI 又绿了"白占一行。公开仓库免 token。
+
+## 加自己的场景
+
+场景就是「给我一个时间戳，还我一行字」：
+
+```python
+# lark_status/sources/coffee.py
+from ..source import StatefulSource
+
+class Coffee(StatefulSource):
+    name = "coffee"
+
+    def render(self, now):
+        cups = self.read_state().get("cups", 0)
+        if cups < 3:
+            return None                        # 没内容，让给下一个
+        return f"☕️ 已灌 {cups} 杯", "Coffee"    # 图标用别名就行
+```
+
+在 `runner.py` 的 `build_sources()` 加一行注册，再写进 `config.json` 的 `sources`。就这样。
+
+`render` 抛异常不会拖垮别的场景，返回 `None` 表示"此刻没我什么事"。
+
+## 试的时候不用连飞书
+
+```bash
+lark-status now              # 每个场景单独算出什么，谁会被显示
+lark-status tick --dry-run   # 完整走一遍，只算不写
+```
+
+## 开发
+
+```bash
+python -m pytest tests -q
+```
+
+31 个测试，覆盖字符宽度、18 个图标、三步刷新、同文只续期、场景边界。不联网、不需要凭证。
+
+---
+
+## 它在干嘛（原额度功能，未改动）
 
 | 剩余额度 | 飞书图标 | 文字 | 精神状态 |
 |---|---|---|---|
@@ -39,14 +143,12 @@
 
 > 为什么 Claude 不用 statusline？因为桌面 App 不跑 statusline。`claude_statusline.py` 还是留着了，终端党可以接上当备用数据源。
 
-写飞书走的是**飞书系统状态** API（`personal_settings/v1/system_statuses`）：改名 → 关闭 → 重开，客户端才会刷新文字。
-
 ## 需要什么
 
-- macOS（菜单栏应用要 14+；只要命令行工具，**不用装 Xcode**）
 - Python 3（系统自带的 `/usr/bin/python3` 就行，零第三方依赖）
 - [lark-cli](https://open.feishu.cn)，已登录，用的是**企业自建应用**
 - Claude Pro / Max 订阅，并且在终端登录过一次 `claude`（只看 Codex 的话不需要）
+- macOS 菜单栏应用要 14+；只要命令行工具的话**不用装 Xcode**
 
 ## 上手
 
@@ -84,7 +186,10 @@ claude                      # 走一遍登录，token 会存进钥匙串
   "claude_cli": "claude",                   // 用来续期 token 的官方 CLI
   "system_status_id": "…",                  // setup.py 填
   "user_open_id": "ou_…",                   // setup.py 填
-  "utc_offset_hours": 8
+  "utc_offset_hours": 8,
+
+  "sources": ["pomodoro", "fish", "quota", "ci"],   // 新增：场景优先级
+  "ci": { "repo": "you/repo", "branch": "main" }    // 新增：CI 场景
 }
 ```
 
@@ -115,7 +220,9 @@ claude                      # 走一遍登录，token 会存进钥匙串
 
 ## English TL;DR
 
-Puts your **Claude / Codex subscription quota** into your **Feishu (Lark) status**, refreshed every 10 minutes, plus a tiny macOS menu bar app.
+**Put your Claude / Codex quota, idle time, or CI status into your Feishu (Lark) status bar.**
+
+The original quota feature works exactly as before (`update.py` + macOS menubar, untouched). New in 0.2: the status-bar plumbing is extracted into `lark_status/core.py`, with pluggable sources (quota / pomodoro / idle timer / CI) and cross-platform credential handling.
 
 - ⚡ ≥30% left · ⌨️ 1–29% · 🏖️ `已陨落` ("fallen") with the reset time
 - Claude: queries `/api/oauth/usage` with the token from the terminal `claude` login in your keychain, and polls more often while you're actively using Claude. When the token expires, it lets the official `claude` CLI refresh it (one tiny haiku request, no saved session) instead of calling the token endpoint itself. Codex: parses `~/.codex/sessions` logs.
