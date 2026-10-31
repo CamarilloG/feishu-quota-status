@@ -1,80 +1,60 @@
 """本机查询 Claude 订阅额度，结果写进 claude_rate_limits.json（与 claude_statusline.py 同一格式）。
 
-凭证取自终端 claude 登录后存在钥匙串里的 claudeAiOauth；access_token 临期时自己续期并写回钥匙串
-（refresh_token 会轮换，写回后终端 claude 读到的也是新的）。
-用的是 Claude Code 自己的公开 OAuth client 与 /api/oauth/usage 端点，均非官方文档接口，随时可能变。
+凭证取自终端 claude 登录后存在钥匙串里的 claudeAiOauth。access_token 临期时不自己续期
+（platform.claude.com 会拦截非官方客户端），而是跑一次官方 claude CLI 的最小请求，让它自己续期、
+自己写钥匙串，然后重读。每次续期消耗极少量额度，大约 8 小时一次。
+/api/oauth/usage 不是官方文档接口，随时可能变。
 """
 import json
 import os
 import subprocess
 import time
+import urllib.error
 import urllib.request
 from datetime import datetime
 
 KEYCHAIN_SERVICE = "Claude Code-credentials"
-CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
-TOKEN_ENDPOINT = "https://platform.claude.com/v1/oauth/token"
 USAGE_ENDPOINT = "https://api.anthropic.com/api/oauth/usage"
 OAUTH_BETA = "oauth-2025-04-20"
 REFRESH_SKEW = 300
 CACHE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "claude_rate_limits.json")
+# 让官方 CLI 续期用的最小请求：不保存会话，免得被当成「会话活动」
+REFRESH_ARGS = ["-p", "ok", "--model", "haiku", "--no-session-persistence"]
 
 
-def _read_keychain():
+def _read_oauth():
     out = subprocess.run(["security", "find-generic-password", "-s", KEYCHAIN_SERVICE, "-w"],
                          capture_output=True, text=True)
     if out.returncode:
-        raise RuntimeError("钥匙串里没有 Claude Code-credentials")
-    return json.loads(out.stdout)
+        raise RuntimeError("钥匙串里没有 Claude Code-credentials，请先在终端运行 claude 登录")
+    oauth = json.loads(out.stdout).get("claudeAiOauth") or {}
+    if not oauth.get("accessToken"):
+        raise RuntimeError("钥匙串里没有 Claude 登录，请先在终端运行 claude 登录")
+    return oauth
 
 
-def _store_keychain(data):
-    # 十六进制经参数传入。不要用 security -i：它会截断长行，曾把凭据写成半截。
-    account = os.environ.get("USER") or os.getlogin()
-    hexdata = json.dumps(data, separators=(",", ":")).encode().hex()
-    out = subprocess.run(["security", "add-generic-password", "-U", "-s", KEYCHAIN_SERVICE,
-                          "-a", account, "-X", hexdata], capture_output=True, text=True)
-    return out.returncode == 0
-
-
-def _write_keychain(data, original):
-    """写入后读回校验，不一致就还原成 original。"""
-    if _store_keychain(data):
-        try:
-            if _read_keychain() == data:
-                return
-        except (RuntimeError, ValueError):
-            pass
-    _store_keychain(original)
-    raise RuntimeError("写回钥匙串校验失败，已还原原凭据")
+def _fresh(oauth):
+    return time.time() < (oauth.get("expiresAt") or 0) / 1000 - REFRESH_SKEW
 
 
 def _http_json(req):
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        return json.load(resp)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.load(resp)
+    except urllib.error.HTTPError as e:
+        body = e.read()[:300].decode("utf-8", "replace").replace("\n", " ")
+        raise RuntimeError(f"{req.full_url} HTTP {e.code}: {body}") from None
 
 
-def _valid_access_token():
-    data = _read_keychain()
-    original = json.loads(json.dumps(data))
-    oauth = data.get("claudeAiOauth") or {}
-    if not oauth.get("accessToken"):
-        raise RuntimeError("钥匙串里没有 Claude 登录，请先在终端运行 claude 登录")
-    if time.time() < (oauth.get("expiresAt") or 0) / 1000 - REFRESH_SKEW:
+def _valid_access_token(claude_cli="claude"):
+    oauth = _read_oauth()
+    if _fresh(oauth):
         return oauth["accessToken"]
-    if not oauth.get("refreshToken"):
-        raise RuntimeError("登录缺少 refresh_token，请在终端重新登录 claude")
-    body = json.dumps({"grant_type": "refresh_token", "refresh_token": oauth["refreshToken"],
-                       "client_id": CLIENT_ID}).encode()
-    d = _http_json(urllib.request.Request(TOKEN_ENDPOINT, data=body,
-                                          headers={"Content-Type": "application/json"}))
-    oauth["accessToken"] = d["access_token"]
-    if d.get("refresh_token"):
-        oauth["refreshToken"] = d["refresh_token"]
-    if d.get("expires_in"):
-        oauth["expiresAt"] = int((time.time() + int(d["expires_in"])) * 1000)
-    data["claudeAiOauth"] = oauth
-    _write_keychain(data, original)
+    proc = subprocess.run([claude_cli, *REFRESH_ARGS], capture_output=True, text=True,
+                          timeout=180, cwd=os.path.dirname(CACHE_FILE))
+    oauth = _read_oauth()
+    if not _fresh(oauth):
+        raise RuntimeError(f"claude CLI 没有续期 token（exit {proc.returncode}）：{proc.stderr.strip()[:200]}")
     return oauth["accessToken"]
 
 
@@ -82,9 +62,9 @@ def _epoch(iso):
     return int(datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp()) if iso else None
 
 
-def fetch():
+def fetch(claude_cli="claude"):
     """查询一次额度并写缓存，返回 statusline 同款的 rate_limits。"""
-    token = _valid_access_token()
+    token = _valid_access_token(claude_cli)
     d = _http_json(urllib.request.Request(
         USAGE_ENDPOINT, headers={"Authorization": f"Bearer {token}", "anthropic-beta": OAUTH_BETA}))
     rl = {}

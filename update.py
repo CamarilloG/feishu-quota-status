@@ -37,7 +37,7 @@ ICON_LOW = "Typing"
 ICON_OUT = "GeneralVacation"
 LOW_THRESHOLD = 30
 SHORT_WINDOW_MINUTES = 300
-DEFAULTS = {"source": "claude", "lark_cli": "lark-cli", "utc_offset_hours": 8}
+DEFAULTS = {"source": "claude", "lark_cli": "lark-cli", "claude_cli": "claude", "utc_offset_hours": 8}
 STATUS_TTL = 30 * 60
 STATE_FILE = os.path.join(HERE, "last_title.txt")
 STATUS_API = "/open-apis/personal_settings/v1/system_statuses"
@@ -90,7 +90,7 @@ def latest_claude_rate_limits(now):
     age = now - cache["captured_at"] if cache else float("inf")
     if any(idle <= active and age >= interval for active, interval in ACTIVITY_TIERS):
         try:
-            claude_quota.fetch()
+            claude_quota.fetch(CONFIG["claude_cli"])
             cache = json.load(open(claude_quota.CACHE_FILE, encoding="utf-8"))
         except Exception:
             traceback.print_exc()

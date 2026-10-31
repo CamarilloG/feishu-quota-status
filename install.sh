@@ -28,7 +28,7 @@ cat > "$AGENTS/$LABEL.plist" <<EOF
   <array><string>/usr/bin/python3</string><string>$DIR/update.py</string></array>
   <key>EnvironmentVariables</key>
   <dict>
-    <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>PATH</key><string>$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
 $proxy_env  </dict>
   <key>StartInterval</key><integer>600</integer>
   <key>RunAtLoad</key><true/>

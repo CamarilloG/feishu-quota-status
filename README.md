@@ -81,6 +81,7 @@ claude                      # 走一遍登录，token 会存进钥匙串
 {
   "source": "claude",                       // 飞书显示谁：claude / codex（菜单栏也能切）
   "lark_cli": "/opt/homebrew/bin/lark-cli",
+  "claude_cli": "claude",                   // 用来续期 token 的官方 CLI
   "system_status_id": "…",                  // setup.py 填
   "user_open_id": "ou_…",                   // setup.py 填
   "utc_offset_hours": 8
@@ -101,7 +102,7 @@ claude                      # 走一遍登录，token 会存进钥匙串
 - **飞书只认 18 个官方状态图标**，表情回复里那堆骷髅、吐血都用不了（试过了，不行 💀）。
 - **状态名称最多 20 个字符**（一个汉字算 2 个）。超长会自动去掉空格，所以你可能会看到 `Claude剩53%15:49恢复`。
 - `/api/oauth/usage` 和 Claude Code 的 OAuth client **都不是公开文档接口**，哪天变了就会挂。
-- token 快过期时脚本会自己续期并**写回钥匙串**，写完读回校验，不一致就还原。踩过坑：`security -i` 会截断长行，把凭据写成半截，所以这里不用它。
+- token 快过期时，脚本**不自己续期**：`platform.claude.com` 有 Cloudflare 拦非官方客户端（error 1010），硬绕不体面。它会跑一次官方 `claude -p ok --model haiku --no-session-persistence`，让 CLI 自己续期、自己写钥匙串。大约 8 小时一次，每次吃一丁点额度。脚本全程只读钥匙串。
 - 和 Anthropic、OpenAI、飞书都没有任何关系。纯属打工人自救。
 
 ## 卸载
@@ -117,7 +118,7 @@ claude                      # 走一遍登录，token 会存进钥匙串
 Puts your **Claude / Codex subscription quota** into your **Feishu (Lark) status**, refreshed every 10 minutes, plus a tiny macOS menu bar app.
 
 - ⚡ ≥30% left · ⌨️ 1–29% · 🏖️ `已陨落` ("fallen") with the reset time
-- Claude: queries `/api/oauth/usage` with the token from the terminal `claude` login in your keychain, and polls more often while you're actively using Claude. Codex: parses `~/.codex/sessions` logs.
+- Claude: queries `/api/oauth/usage` with the token from the terminal `claude` login in your keychain, and polls more often while you're actively using Claude. When the token expires, it lets the official `claude` CLI refresh it (one tiny haiku request, no saved session) instead of calling the token endpoint itself. Codex: parses `~/.codex/sessions` logs.
 - Setup: grant the two `personal_settings` scopes to your Feishu app → `python3 setup.py` → `claude` (log in once) → `./install.sh`.
 - Uses undocumented endpoints; may break. Not affiliated with Anthropic, OpenAI, or ByteDance.
 
