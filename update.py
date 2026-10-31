@@ -19,12 +19,12 @@ import glob
 import traceback
 import json
 import os
-import subprocess
 import sys
 import time
 from datetime import datetime, timedelta, timezone
 
 import claude_quota
+from lark_status import core
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CONFIG_FILE = os.path.join(HERE, "config.json")
@@ -107,10 +107,12 @@ def latest_claude_rate_limits(now):
 
 
 def fit(title):
-    """超出飞书名称长度上限时去掉空格。"""
-    if sum(2 if ord(c) > 127 else 1 for c in title) > TITLE_MAX:
-        title = title.replace(" ", "")
-    return title
+    """超出飞书名称长度上限时去掉空格。
+
+    实现在 lark_status.core.fit_title，和 lark_status 的其他场景共用一套规则。
+    比旧版多一步：去空格后仍然超长时硬截断（旧版会原样发出去，被飞书拒绝）。
+    """
+    return core.fit_title(title)
 
 
 def build_status(rl, now, name):
@@ -160,15 +162,8 @@ DISPLAY_TZ = timezone(timedelta(hours=CONFIG["utc_offset_hours"]))
 
 
 def lark(method, path, data, params=None):
-    cmd = [CONFIG["lark_cli"], "api", method, path, "--as", "bot",
-           "--data", json.dumps(data, ensure_ascii=False)]
-    if params:
-        cmd += ["--params", json.dumps(params)]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
-    res = json.loads(proc.stdout or proc.stderr)
-    if not res.get("ok"):
-        raise RuntimeError(f"{method} {path}: {json.dumps(res.get('error'), ensure_ascii=False)}")
-    return res
+    """调 lark-cli。实现在 lark_status.core，和 lark_status 的其他场景共用。"""
+    return core.lark_call(CONFIG["lark_cli"], method, path, data, params)
 
 
 def write_status(now, source, all_rl):
