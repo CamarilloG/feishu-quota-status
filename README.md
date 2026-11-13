@@ -138,7 +138,7 @@ python -m pytest tests -q
 
 | | 来源 | 刷新 |
 |---|---|---|
-| **Claude** | 本机终端 `claude` 的登录 token → `api.anthropic.com/api/oauth/usage` | 跟着你用 Claude 的节奏：10 分钟内有会话活动就每 10 分钟查，2 小时内有活动每 30 分钟查，再久不查，用最后的数据推算 |
+| **Claude** | 问官方 Claude Code 引擎：`claude -p` 的 stream-json 控制协议里发一条 `get_usage`，引擎用自己的登录去查。不调模型、不耗额度、不碰 token。引擎查不到时，退回 Claude Code 自己记在 `~/.claude.json` 里的 `cachedUsageUtilization` | 跟着你用 Claude 的节奏：10 分钟内有会话活动就每 10 分钟查，2 小时内有活动每 30 分钟查，再久不查，用最后的数据推算 |
 | **Codex** | `~/.codex/sessions` 里的会话日志（`rate_limits` + 「hit your usage limit」报错） | Codex 跑着就有新数据 |
 
 > 为什么 Claude 不用 statusline？因为桌面 App 不跑 statusline。`claude_statusline.py` 还是留着了，终端党可以接上当备用数据源。
@@ -166,7 +166,7 @@ python3 setup.py            # 优先级默认 9，和已有系统状态冲突就
 **3. 登录 Claude**（只看 Codex 的话跳过）
 
 ```bash
-claude                      # 走一遍登录，token 会存进钥匙串
+claude auth login           # 登录一次就行，之后续期都是 Claude Code 自己的事
 ```
 
 **4. 装上**：两个 LaunchAgent（定时任务 + 开机启动菜单栏），并编译菜单栏应用
@@ -183,7 +183,7 @@ claude                      # 走一遍登录，token 会存进钥匙串
 {
   "source": "claude",                       // 飞书显示谁：claude / codex（菜单栏也能切）
   "lark_cli": "/opt/homebrew/bin/lark-cli",
-  "claude_cli": "claude",                   // 用来续期 token 的官方 CLI
+  "claude_cli": "claude",                   // 用来查额度的官方 Claude Code
   "system_status_id": "…",                  // setup.py 填
   "user_open_id": "ou_…",                   // setup.py 填
   "utc_offset_hours": 8,
@@ -206,8 +206,9 @@ claude                      # 走一遍登录，token 会存进钥匙串
 - **系统状态是全企业共享的定义**：每个企业最多 10 个，管理员后台看得见。但它只会显示在被开启的人身上，也就是你自己。
 - **飞书只认 18 个官方状态图标**，表情回复里那堆骷髅、吐血都用不了（试过了，不行 💀）。
 - **状态名称最多 20 个字符**（一个汉字算 2 个）。超长会自动去掉空格，所以你可能会看到 `Claude剩53%15:49恢复`。
-- `/api/oauth/usage` 和 Claude Code 的 OAuth client **都不是公开文档接口**，哪天变了就会挂。
-- token 快过期时，脚本**不自己续期**：`platform.claude.com` 有 Cloudflare 拦非官方客户端（error 1010），硬绕不体面。它会跑一次官方 `claude -p ok --model haiku --no-session-persistence`，让 CLI 自己续期、自己写钥匙串。大约 8 小时一次，每次吃一丁点额度。脚本全程只读钥匙串。
+- `get_usage` 控制请求和 `cachedUsageUtilization` **都不是公开文档的接口**，Claude Code 哪次升级改了就会挂。
+- 脚本**完全不碰凭据**：不读也不写钥匙串，不自己调 Anthropic 的接口。早期版本自己调 `/api/oauth/usage`、自己续期 token，结果被 `platform.claude.com` 的 Cloudflare 拦下（error 1010），中间还把钥匙串写坏过一次。现在全交给官方引擎。
+- Claude Code 退出登录后，飞书会停在最后一次读到的数字，按恢复时间推算。日志里会提示你运行 `claude auth login`。
 - 和 Anthropic、OpenAI、飞书都没有任何关系。纯属打工人自救。
 
 ## 卸载
@@ -225,9 +226,13 @@ claude                      # 走一遍登录，token 会存进钥匙串
 The original quota feature works exactly as before (`update.py` + macOS menubar, untouched). New in 0.2: the status-bar plumbing is extracted into `lark_status/core.py`, with pluggable sources (quota / pomodoro / idle timer / CI) and cross-platform credential handling.
 
 - ⚡ ≥30% left · ⌨️ 1–29% · 🏖️ `已陨落` ("fallen") with the reset time
-- Claude: queries `/api/oauth/usage` with the token from the terminal `claude` login in your keychain, and polls more often while you're actively using Claude. When the token expires, it lets the official `claude` CLI refresh it (one tiny haiku request, no saved session) instead of calling the token endpoint itself. Codex: parses `~/.codex/sessions` logs.
+- Claude: asks the official Claude Code engine (`claude -p` stream-json control protocol, `get_usage`), so no direct API calls, no token handling, no model call. Falls back to Claude Code's own `cachedUsageUtilization` in `~/.claude.json`. Polls more often while you're actively using Claude. Codex: parses `~/.codex/sessions` logs.
 - Setup: grant the two `personal_settings` scopes to your Feishu app → `python3 setup.py` → `claude` (log in once) → `./install.sh`.
 - Uses undocumented endpoints; may break. Not affiliated with Anthropic, OpenAI, or ByteDance.
+
+## Credits
+
+Claude 取额度的办法学自 [agent-hud-open](https://github.com/jazzenchen/agent-hud-open)（Apache-2.0），这里是用 Python 重新实现的同一思路。
 
 ## License
 
