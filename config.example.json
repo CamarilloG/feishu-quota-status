@@ -2,6 +2,7 @@
   "source": "claude",
   "lark_cli": "/opt/homebrew/bin/lark-cli",
   "claude_cli": "claude",
+  "codex_cli": "codex",
   "system_status_id": "<setup.py 会填>",
   "user_open_id": "<setup.py 会填>",
   "utc_offset_hours": 8

@@ -9,7 +9,8 @@
 有 5 小时窗口时看 5 小时窗口（显示恢复时刻）；只有周窗口时（如 Pro 的单一周额度）看周窗口
 （显示恢复日期）。
 
-Codex 的数据来自 ~/.codex/sessions 下最新会话日志里的 rate_limits（只有 Codex 运行时才会刷新）。
+Codex 的数据每次运行都问 codex_quota.py（官方 app-server），失败时退回 ~/.codex/sessions 会话日志里的
+rate_limits（只有 Codex 运行时才会刷新）。
 Claude 的数据由 claude_quota.py 本机查询，查询频率跟着 ~/.claude/projects 的会话活动走：
 10 分钟内有活动每 10 分钟查一次，2 小时内有活动每 30 分钟查一次，更久没活动就不查，沿用缓存推算。
 状态文字变化时：PATCH 名称 -> batch_close -> batch_open（客户端才会显示新文字）；
@@ -24,6 +25,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 import claude_quota
+import codex_quota
 from lark_status import core
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -37,14 +39,24 @@ ICON_LOW = "Typing"
 ICON_OUT = "GeneralVacation"
 LOW_THRESHOLD = 30
 SHORT_WINDOW_MINUTES = 300
-DEFAULTS = {"source": "claude", "lark_cli": "lark-cli", "claude_cli": "claude", "utc_offset_hours": 8}
+DEFAULTS = {"source": "claude", "lark_cli": "lark-cli", "claude_cli": "claude", "codex_cli": "codex",
+            "utc_offset_hours": 8}
 STATUS_TTL = 30 * 60
 STATE_FILE = os.path.join(HERE, "last_title.txt")
 STATUS_API = "/open-apis/personal_settings/v1/system_statuses"
 
 
 def latest_codex_rate_limits():
-    """返回最新的 rate_limits。
+    """先问 Codex app-server，失败再翻会话日志。"""
+    try:
+        return codex_quota.fetch(CONFIG["codex_cli"])
+    except Exception:
+        traceback.print_exc()
+        return codex_rate_limits_from_logs()
+
+
+def codex_rate_limits_from_logs():
+    """返回会话日志里最新的 rate_limits。
 
     额度用尽后 Codex 不再发请求，日志里不会出现 100% 的记录，只会在最后一条 rate_limits 之后
     出现 "hit your usage limit" 报错；这种情况下把用量最高的窗口记为 100%。

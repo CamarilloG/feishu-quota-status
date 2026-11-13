@@ -139,7 +139,7 @@ python -m pytest tests -q
 | | 来源 | 刷新 |
 |---|---|---|
 | **Claude** | 问官方 Claude Code 引擎：`claude -p` 的 stream-json 控制协议里发一条 `get_usage`，引擎用自己的登录去查。不调模型、不耗额度、不碰 token。引擎查不到时，退回 Claude Code 自己记在 `~/.claude.json` 里的 `cachedUsageUtilization` | 跟着你用 Claude 的节奏：10 分钟内有会话活动就每 10 分钟查，2 小时内有活动每 30 分钟查，再久不查，用最后的数据推算 |
-| **Codex** | `~/.codex/sessions` 里的会话日志（`rate_limits` + 「hit your usage limit」报错） | Codex 跑着就有新数据 |
+| **Codex** | 问官方 Codex CLI 的 app-server：`codex app-server --listen stdio://`，JSON-RPC 调 `account/rateLimits/read`。不读日志、不耗额度，Codex 没开也是实时的。查不到时退回 `~/.codex/sessions` 会话日志 | 每次运行都查（10 分钟一次） |
 
 > 为什么 Claude 不用 statusline？因为桌面 App 不跑 statusline。`claude_statusline.py` 还是留着了，终端党可以接上当备用数据源。
 
@@ -184,6 +184,7 @@ claude auth login           # 登录一次就行，之后续期都是 Claude Cod
   "source": "claude",                       // 飞书显示谁：claude / codex（菜单栏也能切）
   "lark_cli": "/opt/homebrew/bin/lark-cli",
   "claude_cli": "claude",                   // 用来查额度的官方 Claude Code
+  "codex_cli": "codex",                     // 用来查额度的官方 Codex CLI
   "system_status_id": "…",                  // setup.py 填
   "user_open_id": "ou_…",                   // setup.py 填
   "utc_offset_hours": 8,
@@ -226,13 +227,13 @@ claude auth login           # 登录一次就行，之后续期都是 Claude Cod
 The original quota feature works exactly as before (`update.py` + macOS menubar, untouched). New in 0.2: the status-bar plumbing is extracted into `lark_status/core.py`, with pluggable sources (quota / pomodoro / idle timer / CI) and cross-platform credential handling.
 
 - ⚡ ≥30% left · ⌨️ 1–29% · 🏖️ `已陨落` ("fallen") with the reset time
-- Claude: asks the official Claude Code engine (`claude -p` stream-json control protocol, `get_usage`), so no direct API calls, no token handling, no model call. Falls back to Claude Code's own `cachedUsageUtilization` in `~/.claude.json`. Polls more often while you're actively using Claude. Codex: parses `~/.codex/sessions` logs.
+- Claude: asks the official Claude Code engine (`claude -p` stream-json control protocol, `get_usage`), so no direct API calls, no token handling, no model call. Falls back to Claude Code's own `cachedUsageUtilization` in `~/.claude.json`. Polls more often while you're actively using Claude. Codex: asks the official Codex CLI's app-server (`account/rateLimits/read` over JSON-RPC), falling back to `~/.codex/sessions` logs.
 - Setup: grant the two `personal_settings` scopes to your Feishu app → `python3 setup.py` → `claude` (log in once) → `./install.sh`.
 - Uses undocumented endpoints; may break. Not affiliated with Anthropic, OpenAI, or ByteDance.
 
 ## Credits
 
-Claude 取额度的办法学自 [agent-hud-open](https://github.com/jazzenchen/agent-hud-open)（Apache-2.0），这里是用 Python 重新实现的同一思路。
+Claude 和 Codex 取额度的办法都学自 [agent-hud-open](https://github.com/jazzenchen/agent-hud-open)（Apache-2.0），这里是用 Python 重新实现的同一思路。
 
 ## License
 
