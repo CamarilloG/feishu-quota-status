@@ -28,7 +28,7 @@
 装完立刻能看到东西，不写代码。想加自己的场景，去看 `lark_status/sources/fish.py`——那 36 行就是全部文档。
 
 > 原本的额度功能**完全不受影响**：`update.py` 和 macOS 菜单栏照旧工作。新东西全是加法。
-> 现在也**不再只支持 macOS**：凭证读取按平台分支，Linux / Windows 都能跑。
+> 现在也**不再只支持 macOS**：额度全靠问官方 `claude` / `codex` CLI，装了它们的 Linux / Windows 也能跑。
 
 ---
 
@@ -208,7 +208,7 @@ claude auth login           # 登录一次就行，之后续期都是 Claude Cod
 - **飞书只认 18 个官方状态图标**，表情回复里那堆骷髅、吐血都用不了（试过了，不行 💀）。
 - **状态名称最多 20 个字符**（一个汉字算 2 个）。超长会自动去掉空格，所以你可能会看到 `Claude剩53%15:49恢复`。
 - `get_usage` 控制请求和 `cachedUsageUtilization` **都不是公开文档的接口**，Claude Code 哪次升级改了就会挂。
-- 脚本**完全不碰凭据**：不读也不写钥匙串，不自己调 Anthropic 的接口。早期版本自己调 `/api/oauth/usage`、自己续期 token，结果被 `platform.claude.com` 的 Cloudflare 拦下（error 1010），中间还把钥匙串写坏过一次。现在全交给官方引擎。
+- 整个仓库**完全不碰凭据**：不读也不写钥匙串或凭证文件，不自己调 Anthropic / OpenAI 的接口。早期版本自己调 `/api/oauth/usage`、自己续期 token，结果被 `platform.claude.com` 的 Cloudflare 拦下（error 1010），中间还把钥匙串写坏过一次。现在全交给官方引擎。
 - Claude Code 退出登录后，飞书会停在最后一次读到的数字，按恢复时间推算。日志里会提示你运行 `claude auth login`。
 - 和 Anthropic、OpenAI、飞书都没有任何关系。纯属打工人自救。
 
